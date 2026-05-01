@@ -10,6 +10,7 @@ API REST em Python com **Flask** e documentação **Swagger**, pensada para **te
 
 - Python 3.10+ (recomendado)
 - PostgreSQL com a tabela criada conforme `scripts_bd/create_table.sql`
+- Se o banco **já existia** antes da inclusão dos campos elétricos, aplique também `scripts_bd/alter_leituras_add_eletricos.sql` uma vez
 - Rede acessível entre o celular/emulador e a máquina que roda a API (mesma Wi‑Fi ou túnel)
 
 ## Configuração do banco (`.env`)
@@ -72,7 +73,7 @@ Campos **obrigatórios:** `codplantacao`, `codleitura`, `lat`, `lon`, `dataleit`
 - `dataleit`: string `YYYY-MM-DD`
 - `horaleit`: string `HH:MM` ou `HH:MM:SS`
 
-Demais campos numéricos são opcionais; se omitidos, a API usa o valor sentinela **-9999** (alinhado aos defaults da tabela). `status_blockchain` pode ser `PENDENTE`, `ENVIADO` ou `CONFIRMADO` (padrão `PENDENTE`).
+Demais campos numéricos são opcionais; se omitidos, a API usa o valor sentinela **-9999** (alinhado aos defaults da tabela). Entre eles estão os sensores ambientais habituais e, opcionalmente, **comunicação / grandezas elétricas:** `scomunicacao`, `stensao`, `scorrente`, `spotencia`. `status_blockchain` pode ser `PENDENTE`, `ENVIADO` ou `CONFIRMADO` (padrão `PENDENTE`).
 
 Exemplo com `curl`:
 
@@ -93,6 +94,10 @@ curl -X POST "http://127.0.0.1:8001/leituras" \
     "luz": 800.0,
     "chuva": 0.0,
     "umid_folha": 10.5,
+    "scomunicacao": 1.0,
+    "stensao": 220.0,
+    "scorrente": 0.5,
+    "spotencia": 110.0,
     "status_blockchain": "PENDENTE"
   }'
 ```
@@ -231,6 +236,6 @@ A API dentro do contêiner usa `DATABASE_URL` gerado automaticamente a partir de
 ### Observações
 
 - Para **parar** e remover contêineres: `docker compose down`. Para apagar também o volume do Postgres (apaga os dados): `docker compose down -v`.
-- Se o volume do banco **já existir** de uma execução anterior, o script de `initdb` **não roda de novo**. Nesse caso, garanta que a tabela exista (ou recrie o volume, ciente de que os dados serão perdidos).
+- Se o volume do banco **já existir** de uma execução anterior, o script de `initdb` **não roda de novo**. Nesse caso, garanta que a tabela exista (ou recrie o volume, ciente de que os dados serão perdidos). Se a tabela foi criada sem as colunas `scomunicacao`, `stensao`, `scorrente` e `spotencia`, execute `scripts_bd/alter_leituras_add_eletricos.sql` no Postgres (por exemplo com `psql` apontando para o serviço `db`).
 
 Assim você pode testar o mesmo fluxo do app Android e os endpoints REST usando apenas Docker, sem precisar configurar Python e Postgres diretamente no sistema operacional.
