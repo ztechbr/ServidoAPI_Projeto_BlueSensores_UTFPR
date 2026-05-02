@@ -77,13 +77,15 @@ Assim você valida contratos e URLs sem escrever código à mão.
 
 Para sistemas que não usam REST/JSON, a API expõe um serviço **SOAP 1.1** cuja operação de consulta replica os **mesmos filtros** do `GET /leituras` (pelo menos um entre plantação e intervalo de datas; `limit` e `offset` opcionais).
 
+**Namespace versus URL do serviço:** o *target namespace* em `<xs:schema targetNamespace="..."/>` identifica os tipos no XML; o cliente chama o serviço pelo **`<soap:address location="..."/>`**. Defina **`SOAP_PUBLIC_URL`** no `.env` com a URL pública do `POST` (ex.: `https://api-sensores.ztechnologies.io/soap`). Se **`SOAP_NAMESPACE`** não estiver definido, o servidor deriva automaticamente o namespace como **`{scheme}://{host}/leituras`** a partir de `SOAP_PUBLIC_URL`, para o WSDL hospedado no seu domínio não continuar mostrando o URI acadêmico padrão. Para um namespace fixo diferente, defina **`SOAP_NAMESPACE`** explicitamente.
+
 | Item | Valor |
 |------|--------|
 | **WSDL (contrato para importar no cliente)** | `http://<host>:<porta>/soap/?wsdl` |
-| **Endpoint HTTP** | `POST` em `http://<host>:<porta>/soap` |
+| **Endpoint HTTP** | `POST` em `http://<host>:<porta>/soap` (ou o host público que aparecer no WSDL) |
 | **Corpo** | XML envelope SOAP 1.1 (veja exemplo abaixo) |
 | **Operação** | `listarLeituras` |
-| **Namespace XML** | `http://utfpr.edu.br/bluesensores/leituras` |
+| **Namespace XML (`tns`)** | Valor de `targetNamespace` no WSDL — configurável por `SOAP_NAMESPACE` (padrão: `http://utfpr.edu.br/bluesensores/leituras`) |
 | **Cabeçalho** | `Content-Type: text/xml; charset=utf-8` e, em geral, `SOAPAction: listarLeituras` (confira no WSDL se seu cliente exigir outro formato). |
 
 O elemento de entrada **`filtro`** aceita campos opcionais alinhados ao REST: `codplantacao`, `dataleit_inicio`, `dataleit_fim` (datas `YYYY-MM-DD`), `limit` (1–500, padrão 100), `offset` (padrão 0). Se **nenhum filtro** for informado, o serviço responde com **SOAP Fault**, como no `GET` sem filtros.

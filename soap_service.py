@@ -1,7 +1,16 @@
 """
 Webservice SOAP 1.1 — consulta de leituras com os mesmos filtros do GET /leituras.
 WSDL: GET {base}/soap/?wsdl
+
+- SOAP_NAMESPACE: target namespace explícito no WSDL (xs:schema targetNamespace, prefixo tns).
+- SOAP_PUBLIC_URL: URL do endpoint SOAP; fixa <soap:address location="..."/>.
+  Se SOAP_NAMESPACE não estiver definido mas SOAP_PUBLIC_URL estiver, o namespace passa a ser
+  ``{scheme}://{host}/leituras`` (mesmo host do endpoint público), para alinhar ao deploy.
 """
+import os
+from urllib.parse import urlparse
+
+from dotenv import load_dotenv
 from spyne import Application, rpc, ServiceBase
 from spyne.error import Fault
 from spyne.model.complex import Array, ComplexModel
@@ -11,7 +20,24 @@ from spyne.server.wsgi import WsgiApplication
 
 from leituras_query import ConsultaLeiturasError, consulta_leituras_desde_strings
 
-TNS = "http://utfpr.edu.br/bluesensores/leituras"
+load_dotenv()
+
+_DEFAULT_TNS = "http://utfpr.edu.br/bluesensores/leituras"
+
+
+def _resolve_target_namespace():
+    explicit = (os.getenv("SOAP_NAMESPACE") or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    public = (os.getenv("SOAP_PUBLIC_URL") or "").strip().rstrip("/")
+    if public:
+        parts = urlparse(public)
+        if parts.scheme and parts.netloc:
+            return f"{parts.scheme}://{parts.netloc}/leituras"
+    return _DEFAULT_TNS
+
+
+TNS = _resolve_target_namespace()
 
 
 class FiltroListagemLeituras(ComplexModel):
@@ -136,3 +162,8 @@ soap_application = Application(
 )
 
 soap_wsgi_app = WsgiApplication(soap_application)
+
+_public = (os.getenv("SOAP_PUBLIC_URL") or "").strip().rstrip("/")
+if _public and soap_wsgi_app.doc.wsdl11 is not None:
+    soap_wsgi_app.doc.wsdl11.build_interface_document(_public)
+    soap_wsgi_app._wsdl = soap_wsgi_app.doc.wsdl11.get_interface_document()
