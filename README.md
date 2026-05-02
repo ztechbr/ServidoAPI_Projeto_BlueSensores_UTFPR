@@ -1,6 +1,12 @@
 # Servidor API — Projeto BlueSensores (UTFPR)
 
-API em Python com **Flask**, documentação **Swagger** para o REST e um **Web Service SOAP 1.1** opcional, pensada para **testes de integração** com o **aplicativo Android de sensores** e para clientes legados. A API recebe leituras em JSON via `POST` (REST), grava na tabela PostgreSQL `leituras`, e permite **consultas filtradas** tanto pelo **`GET /leituras`** quanto pela operação SOAP **`listarLeituras`** — os dois usam as mesmas regras de filtro.
+API em Python com **Flask**, documentação **Swagger** para o REST e um **Web Service SOAP 1.1** no mesmo path **`/soap`**, pensada para **testes de integração** com o **aplicativo Android de sensores** e para clientes legados. A API recebe leituras em JSON via **`POST /leituras`**, grava na tabela PostgreSQL `leituras`, e permite **consultas filtradas** por:
+
+- **`GET /leituras`** (REST JSON; opcionalmente protegido por **`API_TOKEN`**),
+- **`GET /soap?format=json`** ou **`format=xml`** (mesmos filtros na query string; **sem** token; útil no navegador),
+- **`POST /soap`** com envelope **SOAP 1.1** ou **`GET /soap?wsdl`** para o contrato (também **sem** `API_TOKEN`).
+
+As regras de filtro são as mesmas em todos os casos.
 
 **Repositório no GitHub:** use o nome **`Servidor_API_Projeto_BlueSensores_UTFPR`**. Para renomear um repositório já criado: *Settings → General → Repository name*.
 
@@ -26,7 +32,18 @@ Você pode usar **uma** das formas:
 1. **URL completa:** `DATABASE_URL=postgresql://usuario:senha@host:5432/nome_do_banco`
 2. **Variáveis separadas:** `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 
-Opcional: `PORT` — porta HTTP da API (padrão **8001** se não definido).
+Opcional:
+
+| Variável | Descrição |
+|----------|-----------|
+| `PORT` | Porta HTTP da API (padrão **8001**). |
+| `API_TOKEN` | Se definido e não vazio, **`GET`/`POST /leituras`** exigem `Authorization: Bearer <token>` ou cabeçalho `X-API-Key`. **Não** se aplica a **`/soap`** nem a **`/health`** / **`/apidocs`**. |
+| `SOAP_PUBLIC_URL` | URL pública do endpoint SOAP (ex.: `https://seu-dominio/soap`). Fixa `<soap:address location="..."/>` no WSDL; se **`SOAP_NAMESPACE`** estiver vazio, o *target namespace* do WSDL vira `{scheme}://{host}/leituras`. |
+| `SOAP_NAMESPACE` | *Target namespace* explícito no WSDL (opcional; sobrescreve a derivação a partir de `SOAP_PUBLIC_URL`). |
+
+Veja comentários no arquivo **`.env.example`**.
+
+**Dependências:** o SOAP usa **Spyne** (instalação via Git no Python 3.12+) e **`lxml`**; o `Dockerfile` instala **Git** só durante o `pip install`.
 
 ## Instalação e execução
 
@@ -47,16 +64,17 @@ Por padrão o servidor sobe em **`http://0.0.0.0:8001`** (acessível na rede loc
 | `GET` | `/health` | Verifica se o serviço está no ar (`{"status":"ok"}`). |
 | `GET` | `/leituras` | Lista leituras com filtros (obrigatório pelo menos um filtro). |
 | `POST` | `/leituras` | Insere uma leitura (JSON). |
-| `GET` | `/soap` | Mesmos filtros que `GET /leituras`, resposta **JSON** ou **XML** (`format=json` ou `format=xml`). **Não** usa `API_TOKEN`. Ideal para testar no navegador. |
-| `POST` | `/soap` | Consulta leituras via **SOAP 1.1** (corpo XML; equivalente ao `GET /leituras`; ver abaixo). |
+| `GET` | `/soap` | Depende dos parâmetros: **`?wsdl`** → WSDL; **`?format=json`** ou **`format=xml`** + filtros → mesma consulta que `GET /leituras`; **sem filtros** → JSON de ajuda. **Não** usa `API_TOKEN`. |
+| `POST` | `/soap` | Consulta via **SOAP 1.1** (corpo XML; operação `listarLeituras`). **Não** usa `API_TOKEN`. |
 
 ### Como escolher: REST (Swagger) ou Web Service (SOAP)
 
 | Objetivo | Caminho recomendado |
 |----------|----------------------|
-| Explorar e testar a API no navegador, ver parâmetros e exemplos | **Swagger** em `/apidocs` |
-| Integrar apps modernos, mobile ou scripts com JSON | **REST** (`GET`/`POST` em `/leituras`) |
-| Integrar sistemas mais antigos ou ferramentas que só falam SOAP/WSDL | **Web Service** em `/soap` + WSDL |
+| Explorar e testar a API no navegador, ver parâmetros e exemplos | **Swagger** em `/apidocs` (use **Authorize** se `API_TOKEN` estiver configurado) |
+| Integrar apps modernos, mobile ou scripts com JSON | **REST** (`GET`/`POST` em `/leituras`) com token se exigido |
+| Ver dados no navegador sem Postman, em JSON ou XML | **`GET /soap?format=json` ou `format=xml`** com os mesmos query params do `GET /leituras` |
+| Integrar sistemas legados ou ferramentas SOAP | **WSDL** em `/soap?wsdl` e **`POST /soap`** com envelope XML |
 
 A **gravação** de novas leituras está disponível **apenas por REST** (`POST /leituras`). A **leitura com filtros** pode ser feita por **REST** ou **SOAP**, com o mesmo significado de filtros.
 
@@ -66,33 +84,48 @@ A **gravação** de novas leituras está disponível **apenas por REST** (`POST 
 
 1. Com o servidor em execução, abra no navegador: **`http://<host>:<porta>/apidocs`**  
    (ex.: `http://127.0.0.1:8001/apidocs` ou `http://localhost:8001/apidocs` com Docker).
-2. A interface **Swagger UI** lista os endpoints (`/health`, `GET /leituras`, `POST /leituras`), os parâmetros (query, body) e os códigos de resposta descritos no projeto.
-3. Para **experimentar** uma rota: expanda a operação → **Try it out** → preencha parâmetros ou o JSON do corpo → **Execute**.
-4. A própria UI mostra o **curl** gerado e o corpo da resposta, o que ajuda a repetir a chamada em Postman, no app ou em scripts.
+2. A interface **Swagger UI** lista os endpoints (`/health`, `GET /leituras`, `POST /leituras`), os parâmetros (query, body) e os códigos de resposta descritos no projeto. **`/soap`** não aparece no Swagger (é SOAP/GET alternativo; use as URLs descritas abaixo).
+3. Se o servidor tiver **`API_TOKEN`** definido, clique em **Authorize** e informe **`Bearer <seu_token>`** (o mesmo valor da variável de ambiente) antes de testar **`GET`/`POST /leituras`**.
+4. Para **experimentar** uma rota: expanda a operação → **Try it out** → preencha parâmetros ou o JSON do corpo → **Execute**.
+5. A própria UI mostra o **curl** gerado e o corpo da resposta, o que ajuda a repetir a chamada em Postman, no app ou em scripts.
 
 Assim você valida contratos e URLs sem escrever código à mão.
 
+### Autenticação REST (`API_TOKEN`)
+
+Quando **`API_TOKEN`** está definido no `.env` (valor não vazio), inclua em **`GET /leituras`** e **`POST /leituras`** um dos seguintes:
+
+- Cabeçalho **`Authorization: Bearer <API_TOKEN>`**, ou  
+- Cabeçalho **`X-API-Key: <API_TOKEN>`**
+
+Se **`API_TOKEN`** estiver vazio ou ausente, essas rotas permanecem abertas (adequado para desenvolvimento local). **`/soap`**, **`/health`** e **`/apidocs`** não usam esse token.
+
 ---
 
-### Web Service SOAP — consulta de leituras (compatível com clientes legados)
+### Web Service e `/soap` — consulta de leituras
 
-Para sistemas que não usam REST/JSON, a API expõe um serviço **SOAP 1.1** cuja operação de consulta replica os **mesmos filtros** do `GET /leituras` (pelo menos um entre plantação e intervalo de datas; `limit` e `offset` opcionais).
+No mesmo path **`/soap`** a API oferece:
 
-**Namespace versus URL do serviço:** o *target namespace* em `<xs:schema targetNamespace="..."/>` identifica os tipos no XML; o cliente chama o serviço pelo **`<soap:address location="..."/>`**. Defina **`SOAP_PUBLIC_URL`** no `.env` com a URL pública do `POST` (ex.: `https://api-sensores.ztechnologies.io/soap`). Se **`SOAP_NAMESPACE`** não estiver definido, o servidor deriva automaticamente o namespace como **`{scheme}://{host}/leituras`** a partir de `SOAP_PUBLIC_URL`, para o WSDL hospedado no seu domínio não continuar mostrando o URI acadêmico padrão. Para um namespace fixo diferente, defina **`SOAP_NAMESPACE`** explicitamente.
+1. **WSDL** — `GET /soap?wsdl` (contrato XML para importar em clientes SOAP).  
+2. **GET com JSON ou XML** — query string igual ao `GET /leituras`, mais **`format=json`** (padrão) ou **`format=xml`**. Ex.: `/soap?format=json&codplantacao=PLANTDEMO`. Sem filtros obrigatórios, responde um JSON de ajuda.  
+3. **POST SOAP 1.1** — envelope XML, operação **`listarLeituras`**.
+
+Em todos os casos valem os **mesmos filtros** (pelo menos um entre `codplantacao`, `dataleit_inicio`, `dataleit_fim`; `limit` e `offset` opcionais). Nenhuma dessas rotas usa **`API_TOKEN`**.
+
+**Namespace versus URL do serviço:** o *target namespace* em `<xs:schema targetNamespace="..."/>` identifica os tipos no XML; a chamada HTTP usa **`<soap:address location="..."/>`**. Defina **`SOAP_PUBLIC_URL`** no `.env` com a URL pública do serviço (ex.: `https://api.exemplo.com/soap`). Se **`SOAP_NAMESPACE`** não estiver definido e **`SOAP_PUBLIC_URL`** estiver, o namespace é derivado como **`{scheme}://{host}/leituras`**. Sem nenhum dos dois, o WSDL mantém o identificador padrão do projeto (`http://utfpr.edu.br/bluesensores/leituras`). Para forçar outro namespace, use **`SOAP_NAMESPACE`**.
 
 | Item | Valor |
 |------|--------|
-| **WSDL (contrato para importar no cliente)** | `http://<host>:<porta>/soap/?wsdl` |
-| **GET leve (JSON/XML na query)** | `GET /soap?format=json&codplantacao=...` ou `format=xml&dataleit_inicio=...` (mesmos parâmetros do `GET /leituras`) |
-| **Endpoint HTTP** | `POST` em `http://<host>:<porta>/soap` (ou o host público que aparecer no WSDL) |
-| **Corpo** | XML envelope SOAP 1.1 (veja exemplo abaixo) |
-| **Operação** | `listarLeituras` |
-| **Namespace XML (`tns`)** | Valor de `targetNamespace` no WSDL — configurável por `SOAP_NAMESPACE` (padrão: `http://utfpr.edu.br/bluesensores/leituras`) |
-| **Cabeçalho** | `Content-Type: text/xml; charset=utf-8` e, em geral, `SOAPAction: listarLeituras` (confira no WSDL se seu cliente exigir outro formato). |
+| **WSDL** | `https://<host>/soap?wsdl` (ou `/soap/?wsdl`) |
+| **GET JSON/XML** | `GET /soap?format=json&…` ou `format=xml&…` (mesmos parâmetros que `GET /leituras`) |
+| **POST SOAP** | `POST /soap` — corpo: envelope SOAP 1.1 |
+| **Operação (POST)** | `listarLeituras` |
+| **Namespace XML (`tns`)** | Atributo `targetNamespace` do WSDL (veja `SOAP_NAMESPACE` / derivação acima) |
+| **Cabeçalhos (POST)** | `Content-Type: text/xml; charset=utf-8` e, em geral, `SOAPAction: listarLeituras` |
 
-**Teste no navegador:** abra por exemplo `http://127.0.0.1:8001/soap?format=json&codplantacao=PLANTDEMO` (troque host e filtros). Com **nenhum** filtro, a API devolve um JSON explicando os parâmetros.
+**Teste no navegador:** abra por exemplo `http://127.0.0.1:8001/soap?format=json&codplantacao=PLANTDEMO`. Para só ver o WSDL: `http://127.0.0.1:8001/soap?wsdl`.
 
-O elemento de entrada **`filtro`** (no POST SOAP) aceita campos opcionais alinhados ao REST: `codplantacao`, `dataleit_inicio`, `dataleit_fim` (datas `YYYY-MM-DD`), `limit` (1–500, padrão 100), `offset` (padrão 0). Se **nenhum filtro** for informado, o serviço responde com **SOAP Fault**, como no `GET` sem filtros.
+No **POST SOAP**, o elemento **`filtro`** aceita os mesmos campos que a query do REST: `codplantacao`, `dataleit_inicio`, `dataleit_fim`, `limit`, `offset`. Sem filtro válido, o POST retorna **SOAP Fault** (equivalente ao `GET /leituras` sem filtros).
 
 Exemplo de envelope (ajuste host, porta e valores):
 
@@ -112,6 +145,8 @@ Exemplo de envelope (ajuste host, porta e valores):
   </soap11env:Body>
 </soap11env:Envelope>
 ```
+
+Use no `xmlns:tns` o mesmo valor de **`targetNamespace`** que aparecer no WSDL obtido em **`GET /soap?wsdl`** (depende de `SOAP_NAMESPACE` / `SOAP_PUBLIC_URL`).
 
 **Sugestão de teste rápido com curl** (envia o XML acima salvo em `request.xml`):
 
@@ -144,6 +179,8 @@ Exemplo:
 GET http://192.168.1.10:8001/leituras?codplantacao=PLANTDEMO&dataleit_inicio=2026-05-01&dataleit_fim=2026-05-31
 ```
 
+Com **`API_TOKEN`** configurado, inclua por exemplo `-H "Authorization: Bearer SEU_TOKEN"` no `curl` ou no cliente HTTP.
+
 ### POST `/leituras` — corpo JSON
 
 Campos **obrigatórios:** `codplantacao`, `codleitura`, `lat`, `lon`, `dataleit`, `horaleit`.
@@ -153,7 +190,7 @@ Campos **obrigatórios:** `codplantacao`, `codleitura`, `lat`, `lon`, `dataleit`
 
 Demais campos numéricos são opcionais; se omitidos, a API usa o valor sentinela **-9999** (alinhado aos defaults da tabela). Entre eles estão os sensores ambientais habituais e, opcionalmente, **comunicação / grandezas elétricas:** `scomunicacao`, `stensao`, `scorrente`, `spotencia`. `status_blockchain` pode ser `PENDENTE`, `ENVIADO` ou `CONFIRMADO` (padrão `PENDENTE`).
 
-Exemplo com `curl`:
+Exemplo com `curl` (adicione `-H "Authorization: Bearer SEU_TOKEN"` se o servidor usar `API_TOKEN`):
 
 ```bash
 curl -X POST "http://127.0.0.1:8001/leituras" \
@@ -274,7 +311,7 @@ fun enviarLeitura(
 
 Pontos importantes:
 
-1. **`Content-Type: application/json`** — o exemplo usa `application/json; charset=utf-8` no `RequestBody`, compatível com a API.
+1. **`Content-Type: application/json`** — o exemplo usa `application/json; charset=utf-8` no `RequestBody`, compatível com a API. Se a API exigir **`API_TOKEN`**, adicione `.header("Authorization", "Bearer $token")` (ou `X-API-Key`) ao `Request`.
 2. **Datas e hora** — a API espera `dataleit` como `YYYY-MM-DD` e `horaleit` como `HH:MM` ou `HH:MM:SS`; o exemplo usa data/hora atuais do dispositivo.
 3. **Thread** — `execute()` bloqueia a thread atual; em Activity chame de uma coroutine com `withContext(Dispatchers.IO) { enviarLeitura(...) }` ou use `enqueue` do OkHttp.
 4. **Produção** — troque HTTP por HTTPS, valide certificados e adicione autenticação se a API for exposta na internet.
@@ -303,7 +340,9 @@ docker compose build
 docker compose up -d
 ```
 
-- Documentação Swagger: `http://localhost:8001/apidocs` (ou a porta definida em `API_PORT`).
+- Swagger: `http://localhost:8001/apidocs` (ajuste a porta se usar `API_PORT`).
+- WSDL SOAP: `http://localhost:8001/soap?wsdl`.
+- Exemplo GET leve no navegador: `http://localhost:8001/soap?format=json&codplantacao=PLANTDEMO`.
 - O Postgres fica exposto no host na porta **5432** por padrão (`POSTGRES_PORT`).
 
 ### Variáveis opcionais
@@ -317,8 +356,11 @@ Você pode definir no ambiente ou num arquivo `.env` **na pasta do projeto** (us
 | `POSTGRES_DB` | `bluet` | nome do banco |
 | `POSTGRES_PORT` | `5432` | porta do Postgres no host |
 | `API_PORT` | `8001` | porta da API no host |
+| `API_TOKEN` | *(vazio)* | Repasse opcional; mesma regra do `.env` para REST `/leituras`. |
+| `SOAP_PUBLIC_URL` | *(vazio)* | URL pública do SOAP/WSDL em produção (ex.: `https://dominio/soap`). |
+| `SOAP_NAMESPACE` | *(vazio)* | *Target namespace* do WSDL; se vazio e `SOAP_PUBLIC_URL` definido, deriva `{scheme}://{host}/leituras`. |
 
-A API dentro do contêiner usa `DATABASE_URL` gerado automaticamente a partir desses valores e do hostname `db`.
+A API dentro do contêiner usa `DATABASE_URL` gerado automaticamente a partir dos valores do Postgres e do hostname `db`.
 
 ### Observações
 
